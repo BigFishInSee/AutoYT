@@ -12,9 +12,57 @@ FFMPEG_PATH = ''#path to ffmpeg.exe here
 def download_video_clip(video_url, start_timestamp, end_timestamp, output_folder, mode):
     global video_stream 
 
-    def resize_video(input_path, output_path):
-    # Resize video to 1:2 aspect ratio
-        subprocess.run([FFMPEG_PATH, '-i', input_path, '-vf', 'scale=iw:2*ih', output_path], capture_output=True)
+    def auth_and_upload():
+        SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+        CLIENT_SECRETS_FILE = ''client_secret.json here, get from google dev console
+
+        flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
+        credentials = flow.run_local_server(port=0)
+
+        # Create a YouTube API service
+        youtube = build("youtube", "v3", credentials=credentials)
+
+        duration_seconds = timestamp_to_seconds(end_timestamp) - timestamp_to_seconds(start_timestamp)
+        # Video metadata for YouTube short
+        request_body = {
+            "snippet": {
+                "title": "test",
+                "description": "test",
+                "tags": ["tag1", "tag2"],
+                "categoryId": "15",  # Choose the appropriate category ID for your video
+                "channelId": "",  # Your channel ID
+                "position": {"type": "position", "value": "end", "cornerPosition": "topRight"},
+            },
+            "status": {
+                "privacyStatus": "unlisted",  # Set privacy status: private, public, or unlisted
+            },
+            "contentDetails": {
+                "durationMs": str(duration_seconds),  
+                "isShort": True,
+            },
+        }
+
+
+        # Video file path
+        video_file_path = os.path.join(output_folder, 'clip.mp4')
+
+        # Upload video
+        media_file_upload = MediaFileUpload(video_file_path, chunksize=-1, resumable=True)
+        videos_insert_response = (
+            youtube.videos()
+            .insert(
+                part="snippet,status,contentDetails",
+                body=request_body,
+                media_body=media_file_upload,
+            )
+            .execute()
+        )
+
+        # Get the uploaded video URL
+        uploaded_video_url = f"https://www.youtube.com/watch?v={videos_insert_response['id']}"
+
+        print(f"Video uploaded successfully. View it here: {uploaded_video_url}")
+
     # Convert to seconds
     def timestamp_to_seconds(timestamp):
         timestamp_parts = timestamp.split(':')
@@ -43,7 +91,7 @@ def download_video_clip(video_url, start_timestamp, end_timestamp, output_folder
             end_seconds = timestamp_to_seconds(end_timestamp)
 
             # Download clip
-            video_stream = yt.streams.filter(file_extension='mp4').first()
+            video_stream = yt.streams.get_highest_resolution()
             video_stream.download(output_folder, filename='clip_temp.mp4')
 
             # Trim 
@@ -60,63 +108,13 @@ def download_video_clip(video_url, start_timestamp, end_timestamp, output_folder
     
     if mode.upper() == "UPLOAD":
 
-        input_video_path = os.path.join(output_folder, 'clip.mp4')
-        output_resized_path = os.path.join(output_folder, 'resized_clip.mp4')
-        resize_video(input_video_path, output_resized_path)
+        auth_and_upload()
 
-        SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
-        CLIENT_SECRETS_FILE = ''#Client_secret,json here
-
-        flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, SCOPES)
-        credentials = flow.run_local_server(port=0)
-
-        # Create a YouTube API service
-        youtube = build("youtube", "v3", credentials=credentials)
-
-        duration_seconds = timestamp_to_seconds(end_timestamp) - timestamp_to_seconds(start_timestamp)
-        # Video metadata for YouTube short
-        request_body = {
-            "snippet": {
-                "title": "test",
-                "description": "test",
-                "tags": ["tag1", "tag2"],
-                "categoryId": "15",  # Choose the appropriate category ID for your video
-                "channelId": "",  # Your channel ID
-                "position": {"type": "position", "value": "end", "cornerPosition": "topRight"},
-            },
-            "status": {
-                "privacyStatus": "",  # Set privacy status: private, public, or unlisted
-            },
-            "contentDetails": {
-                "durationMs": str(duration_seconds),  
-                "isShort": True,
-            },
-        }
-
-
-        # Video file path
-        video_file_path = output_resized_path
-
-        # Upload video
-        media_file_upload = MediaFileUpload(video_file_path, chunksize=-1, resumable=True)
-        videos_insert_response = (
-            youtube.videos()
-            .insert(
-                part="snippet,status,contentDetails",
-                body=request_body,
-                media_body=media_file_upload,
-            )
-            .execute()
-        )
-
-        # Get the uploaded video URL
-        uploaded_video_url = f"https://www.youtube.com/watch?v={videos_insert_response['id']}"
-
-        print(f"Video uploaded successfully. View it here: {uploaded_video_url}")
+        
 
 if __name__ == "__main__":
     if len(sys.argv) != 6:
-        print("Usage: python autovid.py <YouTube Video URL> <Start Timestamp (HH:MM:SS or MM:SS)> <End Timestamp (HH:MM:SS or MM:SS)> <Output Folder> <mode(upload/download)> OR JUST UPLOAD MANUALLY")
+        print("Usage: python autovid.py <YouTube Video URL> <Start Timestamp (HH:MM:SS or MM:SS)> <End Timestamp (HH:MM:SS or MM:SS)> <Output Folder> <mode(upload/download)>")
     else:
         video_url = sys.argv[1]
         start_timestamp = sys.argv[2]
