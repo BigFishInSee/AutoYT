@@ -3,3 +3,5 @@ Dont be bozo and just run it, install depedencies first before running in comman
 Yes, this is very complicated, its just me playing around. Simpler version coming soon
 
 If you dont know how to set up youtube api, just do manuall upload. the video is there for you, move ur fingers!
+
+it is reccomended to manually upload or youtube will hunt ur ass
